@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Админ панель - x7cargo</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f2f2f2; }
+    header { background-color: #4CAF50; color: white; padding: 15px; text-align: center; font-size: 24px; }
+    nav { display: flex; justify-content: center; background: #ddd; }
+    nav button { background: none; border: none; padding: 15px 30px; font-size: 16px; cursor: pointer; }
+    nav button.active { background: #fff; border-bottom: 3px solid #4CAF50; }
+    section { display: none; padding: 20px; }
+    section.active { display: block; }
+    table { border-collapse: collapse; width: 100%; background: white; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 10px; }
+    th { background-color: #f5f5f5; }
+    tr:hover { background: #f0f8ff; }
+    input, select, textarea { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    button.submit { background: #4CAF50; color: white; border: none; padding: 10px 20px; margin-top: 10px; cursor: pointer; }
+    .actions { display: flex; gap: 5px; }
+  </style>
+</head>
+<body>
+
+<header>🎯 Админ Панель - x7cargo</header>
+
+<nav>
+  <button onclick="showScreen('trackScreen')" class="active">📦 Треки</button>
+  <button onclick="showScreen('usersScreen')">👤 Пользователи</button>
+  <button onclick="showScreen('addScreen')">➕ Добавить</button>
+</nav>
+
+<!-- Треки -->
+<section id="trackScreen" class="active">
+  <h2>📦 Все трек-коды</h2>
+
+  <label>Удалить все трек-коды с датой прибытия:</label>
+  <input type="text" id="deleteDate" placeholder="например, 01.09.2025">
+  <button class="submit" onclick="deleteTracksByDate()">Удалить по дате</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Код</th><th>Город</th><th>Дата</th><th>Действия</th>
+      </tr>
+    </thead>
+    <tbody id="trackTable"></tbody>
+  </table>
+</section>
+
+<!-- Пользователи -->
+<section id="usersScreen">
+  <h2>👤 Клиенты</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Имя</th>
+        <th>Телефон</th>
+        <th>Адрес</th>
+        <th>user_id</th>
+        <th>Иву айди</th>
+        <th>Урумчи айди</th>
+        <th>Действия</th>
+      </tr>
+    </thead>
+    <tbody id="userTable"></tbody>
+  </table>
+</section>
+
+<!-- Добавление треков -->
+<section id="addScreen">
+  <h2>➕ Добавить трек</h2>
+  <form id="addForm">
+    <label>Одиночный трек-код:</label>
+    <input type="text" id="code" placeholder="например, 12345678">
+    <label>Город:</label>
+    <input type="text" id="sity" placeholder="например, Иву">
+    <label>Дата прибытия:</label>
+    <input type="text" id="arrival_date_warehouse" placeholder="например, 01.09.2025">
+    <button type="submit" class="submit">Добавить</button>
+  </form>
+
+  <hr>
+
+  <h3>📥 Массовое добавление трек-кодов</h3>
+  <textarea id="bulkTrackCodes" rows="10" placeholder="Вставьте по одному трек-коду на строку"></textarea>
+  <label>Город:</label>
+  <input type="text" id="bulkSity" placeholder="например, Иву">
+  <label>Дата прибытия:</label>
+  <input type="text" id="bulkDate" placeholder="например, 01.09.2025">
+  <button class="submit" onclick="addBulkTracks()">Добавить массово</button>
+</section>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyBX-ycZ5BsPuIiL7y3Mg936PsoBvMCCDD4",
+    authDomain: "coociebook.firebaseapp.com",
+    projectId: "coociebook",
+    storageBucket: "coociebook.appspot.com",
+    messagingSenderId: "51967296072",
+    appId: "1:51967296072:web:0972dbfd6becb6a94a8e7d"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  function showScreen(id) {
+    document.querySelectorAll("nav button").forEach(btn => btn.classList.remove("active"));
+    document.querySelectorAll("section").forEach(sec => sec.classList.remove("active"));
+    document.getElementById(id).classList.add("active");
+    document.querySelector(`nav button[onclick*="${id}"]`).classList.add("active");
+  }
+
+  async function loadTrackData() {
+    const tbody = document.getElementById("trackTable");
+    tbody.innerHTML = "<tr><td colspan='4'>Загрузка...</td></tr>";
+    const tracks = await db.collection("trackcodecj").get();
+    tbody.innerHTML = "";
+
+    for (const doc of tracks.docs) {
+      const t = doc.data();
+      const row = `
+        <tr>
+          <td><input value="${t.code}" onchange="updateTrack('${doc.id}', 'code', this.value)" /></td>
+          <td><input value="${t.sity}" onchange="updateTrack('${doc.id}', 'sity', this.value)" /></td>
+          <td><input value="${t.arrival_date_warehouse}" onchange="updateTrack('${doc.id}', 'arrival_date_warehouse', this.value)" /></td>
+          <td class="actions">
+            <button onclick="deleteTrack('${doc.id}')">🗑️</button>
+          </td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML('beforeend', row);
+    }
+  }
+
+  async function updateTrack(id, field, value) {
+    await db.collection("trackcodecj").doc(id).update({ [field]: value });
+  }
+
+  async function deleteTrack(id) {
+    if (confirm("Удалить этот трек-код?")) {
+      await db.collection("trackcodecj").doc(id).delete();
+      loadTrackData();
+    }
+  }
+
+  async function deleteTracksByDate() {
+    const date = document.getElementById("deleteDate").value.trim();
+    if (!date) return alert("Введите дату!");
+
+    const snapshot = await db.collection("trackcodecj").where("arrival_date_warehouse", "==", date).get();
+    if (snapshot.empty) return alert("Нет треков с этой датой.");
+
+    if (confirm(`Удалить ${snapshot.size} треков с датой ${date}?`)) {
+      const batch = db.batch();
+      snapshot.docs.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      alert("✅ Удалено!");
+      loadTrackData();
+    }
+  }
+
+  async function loadUsers() {
+    const tbody = document.getElementById("userTable");
+    tbody.innerHTML = "<tr><td colspan='5'>Загрузка...</td></tr>";
+    const users = await db.collection("userscj").get();
+    tbody.innerHTML = "";
+
+    for (const doc of users.docs) {
+      const u = doc.data();
+      const row = `
+        <tr>
+          <td><input value="${u.name}" onchange="updateUser('${doc.id}', 'name', this.value)" /></td>
+          <td><input value="${u.phone_number}" onchange="updateUser('${doc.id}', 'phone_number', this.value)" /></td>
+          <td><input value="${u.delivery_address || ''}" onchange="updateUser('${doc.id}', 'delivery_address', this.value)" /></td>
+          <td>${u.user_id}</td>
+          <td>${u.iv_id}</td>
+          <td>${u.urumqi_id}</td>
+          <td><button onclick="deleteUser('${doc.id}')">🗑️</button></td>
+        </tr>
+      `;
+      tbody.insertAdjacentHTML('beforeend', row);
+    }
+  }
+
+  async function updateUser(id, field, value) {
+    await db.collection("userscj").doc(id).update({ [field]: value });
+  }
+
+  async function deleteUser(id) {
+    if (confirm("Удалить пользователя?")) {
+      await db.collection("userscj").doc(id).delete();
+      loadUsers();
+    }
+  }
+
+  document.getElementById("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const data = {
+      code: code.value.trim(),
+      sity: sity.value.trim(),
+      arrival_date_warehouse: arrival_date_warehouse.value.trim()
+    };
+    await db.collection("trackcodecj").add(data);
+    alert("✅ Добавлено!");
+    e.target.reset();
+    showScreen('trackScreen');
+    loadTrackData();
+  });
+
+  async function addBulkTracks() {
+    const codesText = document.getElementById("bulkTrackCodes").value.trim();
+    const sity = document.getElementById("bulkSity").value.trim();
+    const arrivalDate = document.getElementById("bulkDate").value.trim();
+
+    if (!codesText || !sity || !arrivalDate) {
+      return alert("Заполните все поля для массовой загрузки.");
+    }
+
+    const codes = codesText.split('\n').map(code => code.trim()).filter(code => code !== "");
+
+    if (codes.length === 0) {
+      return alert("Нет валидных трек-кодов.");
+    }
+
+    const batch = db.batch();
+
+    codes.forEach(code => {
+      const docRef = db.collection("trackcodecj").doc();
+      batch.set(docRef, {
+        code: code,
+        sity: sity,
+        arrival_date_warehouse: arrivalDate
+      });
+    });
+
+    try {
+      await batch.commit();
+      alert(`✅ Успешно добавлено ${codes.length} трек-кодов!`);
+      document.getElementById("bulkTrackCodes").value = "";
+      loadTrackData();
+      showScreen("trackScreen");
+    } catch (error) {
+      console.error("Ошибка при массовом добавлении:", error);
+      alert("❌ Произошла ошибка при добавлении.");
+    }
+  }
+
+  // Начальная загрузка
+  loadTrackData();
+  loadUsers();
+</script>
+
+</body>
+</html>
